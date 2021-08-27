@@ -4,104 +4,19 @@
 #include <time.h>
 #include <string.h>
 
-#define SIZE 40
 #define BUFF_SIZE 100
 
 enum ranks { ROOT };
 
-// Functions Declartions
-int * getInput(int * num_pairs, int * pairs);
-void masterJob(int count, double answer, int x, int num_procs, MPI_Status status);
-void salveJob(int x, double answer, int count, MPI_Status status, int size);
+/* Functions Declartions */
 
-// This function performs GCD on two given numbers
+/* This function performs GCD on two given numbers */
 int gcd(int a, int b) 
 {
     if (a == 0)
         return b;
     return gcd(b % a, a);
 }
-
-// Sequential code to be parallelized
-int main(int argc, char *argv[]) 
-{
-	/* Declare Variables */
-	int * gcd_results;	// results of GCD calculations
-	double time; // holds time of calculation
-	int my_rank; /* rank of process */
-	int num_procs; /* number of processes */
-	int chunk_size;
-	MPI_Status status; /* return status for receive */
-
-	/* start up MPI */
-	MPI_Init(&argc, &argv);
-
-	/* find out process rank */
-	MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
-
-	/* find out number of processes */
-	MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
-
-	int errorCode = MPI_ERR_COMM;
-
-	/* Sanity check */
-	if (SIZE % (num_procs - 1) != 0 || num_procs == 1) {
-		/*Number of salves does not split correctlyor not enough slaves*/
-		MPI_Abort(MPI_COMM_WORLD, errorCode);
-	}
-
-	int count = SIZE / (num_procs - 1);
-
-	if (my_rank == ROOT)
-	{
-		int num_pairs;
-		int * pairs;
-		pairs = getInput(&num_pairs, pairs);
-		gcd_results = (int*)malloc(sizeof(int) * num_pairs);
-		// masterJob(count, answer, x, num_procs, status);
-	}
-	// else
-		// salveJob(x, answer, count, status, size);
-
-	/* shut down MPI */
-	MPI_Finalize();
-}
-
-void masterJob(int count, double answer, int x, int num_procs, MPI_Status status) 
-{
-
-
-	double t1 = MPI_Wtime();
-	double total = 0;
-
-	//Sending each slave an equal part of the job
-	for (int i = 1; i < num_procs; ++i) {
-		MPI_Send(&x, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-		x += count;
-	}
-	//Receiving results from each slave
-	for (int i = 1; i < num_processes; ++i) {
-		MPI_Recv(&answer, 1, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &status);
-		total += answer;
-	}
-	//Printing total result
-	printf("answer = %e, time is %f\n", total, MPI_Wtime() - t1);
-
-}
-
-void salveJob(int x, double answer, int count, MPI_Status status, int size) 
-{
-
-	//Each slave receives his part of the job
-	MPI_Recv(&x, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &status);
-	for (int start = x; start < count + x; start++)
-		for (int y = 0; y < size; y++)
-			answer += heavy(start, y);
-
-	MPI_Send(&answer, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
-}
-
-
 
 int * getInput(int * num_pairs, int * pairs)
 {
@@ -140,3 +55,92 @@ int * getInput(int * num_pairs, int * pairs)
     fclose(file); // close file
     return pairs; // return pointer of pairs array
 }
+
+void masterJob(int num_procs) 
+{
+	/* Declare Variables */
+	int num_pairs;	/* The number of integers pairs. To be read from the input file */
+	int * pairs;	/* Integers pairs which the GCD algorithm uses as input */
+	int work_size;	/* The size of the job to needed to be sent to each process */	
+	int * gcd_results;	/* results of GCD calculations */
+	MPI_Status status; 	/* return status for receive */
+	int errorCode = MPI_ERR_COMM;
+
+	/* Get number of integer pairs and the pairs themselves into an array */
+	pairs = getInput(&num_pairs, pairs);
+	work_size = (num_pairs * 2) / (num_procs - 1);
+	// work_size += work_size % 2;
+	gcd_results = (int*)malloc(sizeof(int) * num_pairs);
+
+	/* Sanity check */
+	if (work_size % (num_procs - 1) != 0 || num_procs == 1) {
+		/*Number of salves does not split correctly or not enough slaves*/
+		MPI_Abort(MPI_COMM_WORLD, errorCode);
+	}
+	double startTime = MPI_Wtime();
+	// Sending each slave an equal part of the job
+	int count_work = 0;
+	for (int i = 1; i < num_procs; ++i) {
+		MPI_Send(pairs + count_work, work_size, MPI_INT, i, 0, MPI_COMM_WORLD);
+		count_work += work_size;
+	}
+	// Receiving results from each slave
+	for (int i = 1; i < num_procs; ++i) {
+		MPI_Recv(gcd_results[i - 1], 1, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &status);
+	}
+	// Printing total result
+	printf("The time for calcuation is: %f\n", MPI_Wtime() - startTime);
+	int arrSize = sizeof(pairs) / sizeof(pairs[0]);
+	for (int i = 0; i < arrSize; i += 2)
+		print("%d %d\t gcd: %d\n", pairs[i], pairs[i + 1], gcd_results[i / 2]);
+
+	free(pairs);
+	free(gcd_results);
+}
+
+void salveJob() 
+{
+	int * pairs;	/* Integers pairs which the GCD algorithm uses as input */
+	int work_size;	/* The size of the job to needed to be sent to each process */	
+	int * gcd_results;	/* results of GCD calculations */
+	MPI_Status status; 	/* return status for receive */
+
+	// Each slave receives his part of the job
+	MPI_Recv(pairs, work_size, MPI_DOUBLE, ROOT, 0, MPI_COMM_WORLD, &status);
+	for (int start = pairs; start < pairs + work_size; start++)
+		gcd_results[start]
+
+	MPI_Send(gcd_results, 1, MPI_DOUBLE, ROOT, 0, MPI_COMM_WORLD);
+}
+
+
+
+/* Sequential code to be parallelized */
+int main(int argc, char *argv[]) 
+{
+	/* Declare Variables */
+	int my_rank;	/* rank of process */
+	int num_procs;	/* number of processes */
+	
+
+	/* start up MPI */
+	MPI_Init(&argc, &argv);
+
+	/* find out process rank */
+	MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+
+	/* find out number of processes */
+	MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+
+	if (my_rank == ROOT)
+	{	
+		masterJob(num_procs);
+	}
+	// else
+		salveJob();
+
+	/* shut down MPI */
+	MPI_Finalize();
+	return 0;
+}
+
