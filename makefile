@@ -5,4 +5,4 @@ clean:
 	rm -f *.o
 
 run:
-	mpiexec -n 2 ./exec
+	mpiexec -n 4 ./exec

@@ -1,146 +1,126 @@
-#include <stdio.h>
-#include <math.h>
 #include "/usr/include/mpi/mpi.h"
-#include <time.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
-#define BUFF_SIZE 100
-
-enum ranks { ROOT };
-
-/* Functions Declartions */
-
-/* This function performs GCD on two given numbers */
-int gcd(int a, int b) 
+enum ranks
 {
-    if (a == 0)
-        return b;
-    return gcd(b % a, a);
+	ROOT
+};
+
+/* A function to calculate the GCD of 2 given integers recursivly */
+int gcd(int a, int b)
+{
+	if (a == 0)
+		return b;
+	return gcd(b % a, a);
 }
 
-int * getInput(int * num_pairs, int * pairs)
+/* 
+This functions gets 2 pairs of integers into an array.
+The array size is determined dynamically by the value of pairs_num
+*/
+int *UserInputFunction(int *arr, int pairs_num, char *buffer)
 {
-    FILE * file = fopen("input.txt", "r");
-    if (file)
-    {
-        char buffer[BUFF_SIZE];
-        char c;
-        int num1, num2;
-
-        fgets(buffer, BUFF_SIZE, file);
-        sscanf(buffer, "%d", num_pairs); // save the number of pairs
-		int pairsArrSize = 2 * (*num_pairs);
-		pairs = (int*)malloc(sizeof(int)*pairsArrSize); // will keep the numbers
-
-		for (int i = 0; i < pairsArrSize; i)
-        {
-			fgets(buffer, BUFF_SIZE, file);
-			sscanf(buffer, " %d %d%c", &num1, &num2, &c);
-			if (c != '\n'){
-				printf("illegal input at line %d\n", i);
-			}
-			else {
-				pairs[i] = num1;
-				pairs[i + 1] = num2;
-				i += 2; //incrise only if the input is OK
-			}
+	// Declare variables
+	char c;
+	int i, num1, num2;
+	int arraySize = pairs_num * 2;	// The number of pairs * 2 is the needed size for the integers array
+	// Initalize array
+	arr = (int *)malloc(sizeof(int) * arraySize); 
+	// Get input from the user
+	for (i = 0; i < arraySize; i += 2)
+	{
+		fgets(buffer, 100, stdin);
+		sscanf(buffer, " %d %d%c", &num1, &num2, &c);
+		if (c == ' ')
+		{
+			printf("illegal input at line %d\n", i);
+			exit(1);
 		}
-        for (int i = 0; i < pairsArrSize; i++)
-            printf("Num %d is: %d\n", i + 1, pairs[i]);
-    }
-    else
-    {
-        printf("ERROR: Can't open file for reading.\n");
-    }
-    fclose(file); // close file
-    return pairs; // return pointer of pairs array
+		arr[i] = num1;
+		arr[i + 1] = num2;
+	}
+	return arr;
 }
 
-void masterJob(int num_procs) 
+/* The Root process is dealing with all the input/output and managing the other process. */
+int main(int argc, char **argv)
 {
-	/* Declare Variables */
-	int num_pairs;	/* The number of integers pairs. To be read from the input file */
-	int * pairs;	/* Integers pairs which the GCD algorithm uses as input */
-	int work_size;	/* The size of the job to needed to be sent to each process */	
-	int * gcd_results;	/* results of GCD calculations */
-	MPI_Status status; 	/* return status for receive */
-	int errorCode = MPI_ERR_COMM;
-
-	/* Get number of integer pairs and the pairs themselves into an array */
-	pairs = getInput(&num_pairs, pairs);
-	work_size = (num_pairs * 2) / (num_procs - 1);
-	// work_size += work_size % 2;
-	gcd_results = (int*)malloc(sizeof(int) * num_pairs);
-
-	/* Sanity check */
-	if (work_size % (num_procs - 1) != 0 || num_procs == 1) {
-		/*Number of salves does not split correctly or not enough slaves*/
-		MPI_Abort(MPI_COMM_WORLD, errorCode);
-	}
-	double startTime = MPI_Wtime();
-	// Sending each slave an equal part of the job
-	int count_work = 0;
-	for (int i = 1; i < num_procs; ++i) {
-		MPI_Send(pairs + count_work, work_size, MPI_INT, i, 0, MPI_COMM_WORLD);
-		count_work += work_size;
-	}
-	// Receiving results from each slave
-	for (int i = 1; i < num_procs; ++i) {
-		MPI_Recv(gcd_results[i - 1], 1, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &status);
-	}
-	// Printing total result
-	printf("The time for calcuation is: %f\n", MPI_Wtime() - startTime);
-	int arrSize = sizeof(pairs) / sizeof(pairs[0]);
-	for (int i = 0; i < arrSize; i += 2)
-		print("%d %d\t gcd: %d\n", pairs[i], pairs[i + 1], gcd_results[i / 2]);
-
-	free(pairs);
-	free(gcd_results);
-}
-
-void salveJob() 
-{
-	int * pairs;	/* Integers pairs which the GCD algorithm uses as input */
-	int work_size;	/* The size of the job to needed to be sent to each process */	
-	int * gcd_results;	/* results of GCD calculations */
-	MPI_Status status; 	/* return status for receive */
-
-	// Each slave receives his part of the job
-	MPI_Recv(pairs, work_size, MPI_DOUBLE, ROOT, 0, MPI_COMM_WORLD, &status);
-	for (int start = pairs; start < pairs + work_size; start++)
-		gcd_results[start]
-
-	MPI_Send(gcd_results, 1, MPI_DOUBLE, ROOT, 0, MPI_COMM_WORLD);
-}
-
-
-
-/* Sequential code to be parallelized */
-int main(int argc, char *argv[]) 
-{
-	/* Declare Variables */
-	int my_rank;	/* rank of process */
-	int num_procs;	/* number of processes */
+	// Declare variables
+	int i, process, my_rank, pairs_num , arraySize;
+	char buffer[100];
+	double time;
+	int *arr, *MPI_results;
 	
-
-	/* start up MPI */
+	// Initalize MPI program
 	MPI_Init(&argc, &argv);
-
-	/* find out process rank */
 	MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+	MPI_Comm_size(MPI_COMM_WORLD, &process);
 
-	/* find out number of processes */
-	MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
-
+	// If the process is the Root process. It will get the input from the user.
 	if (my_rank == ROOT)
 	{	
-		masterJob(num_procs);
-	}
-	// else
-		salveJob();
+		// Get the number of integers pairs
+		fgets(buffer, 5, stdin);
+		sscanf(buffer, "%d", &pairs_num);
 
-	/* shut down MPI */
+		// Get the integers pairs into the array <arr>
+		UserInputFunction(arr, pairs_num, buffer);
+		MPI_results = (int *)malloc(4 * pairs_num);
+	}
+
+
+	time = MPI_Wtime();	// Variable to measure time of calculation
+	int new_size_even = arraySize / process;
+	MPI_Bcast(&arraySize, 1, MPI_INT, ROOT, MPI_COMM_WORLD); 
+	new_size_even += new_size_even % 2;
+	if (my_rank != ROOT)
+	{
+		arr = (int *)malloc(4 * new_size_even);
+		MPI_results = (int *)malloc(4 * (new_size_even / 2));
+	}
+
+	MPI_Scatter(arr, new_size_even, MPI_INT, arr, new_size_even, MPI_INT, ROOT, MPI_COMM_WORLD); // sent the array to everybody
+
+	if (my_rank + 1 == process)
+	{
+		if (new_size_even > arraySize - (new_size_even * (process - 1)))
+		{
+			for (i = 0; i < arraySize - new_size_even * (process - 1); i += 2)
+				MPI_results[i / 2] = gcd(arr[i], arr[i + 1]);
+		}
+		else
+		{
+			for (i = 0; i < new_size_even; i += 2)
+				MPI_results[i / 2] = gcd(arr[i], arr[i + 1]);
+		}
+	}
+	else
+	{
+			for (i = 0; i < new_size_even; i += 2)
+			MPI_results[i / 2] = gcd(arr[i], arr[i + 1]);
+
+	}
+	int new_size_split = new_size_even / 2;
+	MPI_Gather(MPI_results, new_size_split, MPI_INT, MPI_results, new_size_split, MPI_INT, ROOT, MPI_COMM_WORLD);
+
+	if (my_rank == ROOT)
+	{
+		for (i = (new_size_even * process); i < arraySize; i += 2)
+			MPI_results[i / 2] = gcd(arr[i], arr[i + 1]);
+
+		printf("\nStatic time: %lf\n", MPI_Wtime() - time);
+		
+		for (i = 0; i < arraySize; i += 2)
+		{
+			printf("%d %d \tgcd: %d\n", arr[i], arr[i + 1], MPI_results[i / 2]);
+		}
+	}
+
+	free(MPI_results);
+	free(arr);
 	MPI_Finalize();
 	return 0;
 }
-
